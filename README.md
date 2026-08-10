@@ -32,28 +32,28 @@ graph TD
     classDef db fill:#f39c12,stroke:#d35400,stroke-width:2px,color:#fff;
     
     %% Nodes
-    User((User / Browser)):::client
-    FE[Next.js Frontend\n(React, TS)]:::frontend
-    BE[FastAPI Backend\n(Python, asyncpg)]:::backend
+    User(("User / Browser")):::client
+    FE["Next.js Frontend<br>(React, TS)"]:::frontend
+    BE["FastAPI Backend<br>(Python, asyncpg)"]:::backend
     
     subgraph Database Architecture
-        DB[(PostgreSQL)]:::db
-        PublicSchema[(Public Schema\n- Companies\n- User Directory)]:::db
-        TenantSchema1[(tenant_slug1\n- Users\n- Projects\n- Tasks)]:::db
-        TenantSchemaN[(tenant_slugN\n- Users\n- Projects\n- Tasks)]:::db
+        DB[("PostgreSQL")]:::db
+        PublicSchema[("Public Schema<br>- Companies<br>- User Directory")]:::db
+        TenantSchema1[("tenant_slug1<br>- Users<br>- Projects<br>- Tasks")]:::db
+        TenantSchemaN[("tenant_slugN<br>- Users<br>- Projects<br>- Tasks")]:::db
     end
 
     %% Connections
     User -->|HTTP/HTTPS| FE
-    FE -->|REST API\nJWT + X-Tenant-Slug| BE
-    BE -->|SQLAlchemy ORM| DB
+    FE -->|"REST API<br>JWT + X-Tenant-Slug"| BE
+    BE -->|"SQLAlchemy ORM"| DB
     
     DB --- PublicSchema
     DB --- TenantSchema1
     DB --- TenantSchemaN
 
     %% Note for Multi-Tenancy
-    note[The backend dynamically switches PostgreSQL\nsearch_path based on the X-Tenant-Slug header]
+    note["The backend dynamically switches PostgreSQL<br>search_path based on the X-Tenant-Slug header"]
     BE -.-> note
 ```
 
