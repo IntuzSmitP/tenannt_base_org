@@ -94,7 +94,7 @@ class Task(Base, SoftDeleteMixin, TimestampMixin):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=False)
-    title = Column(String, nullable=False)
+    title = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String, nullable=False, default="todo")
     priority = Column(String, nullable=False, default="medium")

@@ -47,3 +47,7 @@ class ProjectMemberResponse(BaseModel):
     added_at: datetime
     
     model_config = {"from_attributes": True}
+
+class ProjectDeletionImpactResponse(BaseModel):
+    tasks_count: int
+    members_count: int

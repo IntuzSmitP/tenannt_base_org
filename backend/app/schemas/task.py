@@ -18,14 +18,14 @@ class TaskPriorityEnum(str, Enum):
 
 class TaskCreate(BaseModel):
     project_id: UUID
-    title: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
     priority: TaskPriorityEnum = TaskPriorityEnum.medium
     assigned_to: Optional[UUID] = None
     due_date: Optional[date] = None
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1)
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = None
     status: Optional[TaskStatusEnum] = None
     priority: Optional[TaskPriorityEnum] = None

@@ -80,7 +80,8 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if obj:
             if hasattr(obj, "deleted_at"):
                 # Soft delete
-                obj.deleted_at = func.now()
+                from datetime import datetime, timezone
+                obj.deleted_at = datetime.now(timezone.utc)
                 if hasattr(obj, "deleted_by") and deleted_by:
                     obj.deleted_by = deleted_by
                 db.add(obj)

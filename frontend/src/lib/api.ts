@@ -26,6 +26,18 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}, tena
   const data = await response.json();
   
   if (!response.ok) {
+    // If backend provided structured field errors, display the first one cleanly
+    if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
+      const firstError = data.errors[0];
+      if (typeof firstError === 'object' && firstError !== null && firstError.message) {
+        throw new Error(firstError.message);
+      }
+      if (typeof firstError === 'string') {
+        throw new Error(firstError);
+      }
+    }
+    
+    // Fallback to the main generic message
     throw new Error(data.detail || data.message || 'An error occurred');
   }
   

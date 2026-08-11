@@ -120,6 +120,7 @@ export default function Dashboard() {
               <input 
                 type="text" 
                 required 
+                maxLength={100}
                 value={newProject.name}
                 onChange={(e) => setNewProject({...newProject, name: e.target.value})}
               />
@@ -149,8 +150,7 @@ export default function Dashboard() {
             <div key={project.id} className="card">
               <h3>{project.name}</h3>
               <p>{project.description || "No description provided."}</p>
-              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Status: {project.status}</span>
+              <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
                 <Link href={`/${slug}/projects/${project.id}`} className="btn btn-secondary" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', textDecoration: 'none' }}>
                   View Tasks
                 </Link>

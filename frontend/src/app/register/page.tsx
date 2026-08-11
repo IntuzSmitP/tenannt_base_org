@@ -12,12 +12,17 @@ export default function Register() {
     owner_name: "",
     owner_email: "",
     owner_password: "",
+    owner_confirm_password: "",
   });
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.owner_password !== formData.owner_confirm_password) {
+      setError("Passwords do not match");
+      return;
+    }
     setError("");
     setLoading(true);
 
@@ -28,11 +33,11 @@ export default function Register() {
       });
 
       if (response.success) {
-        // Redirect to login after successful registration
-        router.push("/login?registered=true");
+        // Automatically redirect to login, passing the newly created tenant slug if possible
+        router.push("/login");
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to register company.");
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -42,7 +47,7 @@ export default function Register() {
     <div className="auth-layout">
       <div className="auth-container animate-fade-in">
         <div className="glass-card">
-          <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Create Workspace</h2>
+          <h2 style={{ textAlign: 'center', marginBottom: '2rem' }}>Register Workspace</h2>
           
           {error && <div className="alert alert-error">{error}</div>}
           
@@ -59,7 +64,7 @@ export default function Register() {
             </div>
             
             <div className="form-group">
-              <label>Your Name</label>
+              <label>Owner Name</label>
               <input 
                 type="text" 
                 placeholder="John Doe" 
@@ -70,10 +75,10 @@ export default function Register() {
             </div>
             
             <div className="form-group">
-              <label>Work Email</label>
+              <label>Owner Email</label>
               <input 
                 type="email" 
-                placeholder="john@acme.com" 
+                placeholder="john@example.com" 
                 required 
                 value={formData.owner_email}
                 onChange={(e) => setFormData({...formData, owner_email: e.target.value})}
@@ -90,9 +95,20 @@ export default function Register() {
                 onChange={(e) => setFormData({...formData, owner_password: e.target.value})}
               />
             </div>
+
+            <div className="form-group">
+              <label>Confirm Password</label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                required 
+                value={formData.owner_confirm_password}
+                onChange={(e) => setFormData({...formData, owner_confirm_password: e.target.value})}
+              />
+            </div>
             
             <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={loading}>
-              {loading ? "Creating..." : "Create Workspace"}
+              {loading ? "Registering..." : "Create Workspace"}
             </button>
             
             <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.9rem' }}>

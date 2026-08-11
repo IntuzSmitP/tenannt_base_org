@@ -62,3 +62,12 @@ async def delete_project(
 ):
     result = await project_service.delete_project(db, current_user, project_id)
     return APIResponse(success=True, message="Project deleted", data=result)
+
+@router.get("/{project_id}/impact", response_model=APIResponse[dict])
+async def get_project_impact(
+    project_id: UUID,
+    current_user: User = Depends(require_role(["ADMIN", "OWNER"])),
+    db: AsyncSession = Depends(get_tenant_db)
+):
+    impact = await project_service.get_project_impact(db, current_user, project_id)
+    return APIResponse(success=True, message="Project deletion impact retrieved", data=impact)

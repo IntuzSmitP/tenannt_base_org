@@ -24,7 +24,7 @@ npm run dev &
 FRONTEND_PID=$!
 cd ..
 
-echo "========================================="
+echo "==================================== ====="
 echo "✅ Both services are starting up!"
 echo "📡 Backend API: http://localhost:8000"
 echo "🖥️  Frontend UI: http://localhost:3000"

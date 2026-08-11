@@ -11,6 +11,7 @@ function AcceptInviteForm() {
   const slug = searchParams.get("slug");
   
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -22,13 +23,18 @@ function AcceptInviteForm() {
     e.preventDefault();
     if (!token || !slug) return;
     
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    
     setError("");
     setLoading(true);
 
     try {
       const response = await fetchApi("/users/accept-invite", {
         method: "POST",
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password, confirm_password: confirmPassword }),
       }, slug);
 
       if (response.success) {
@@ -79,6 +85,17 @@ function AcceptInviteForm() {
                   required 
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Confirm Password</label>
+                <input 
+                  type="password" 
+                  placeholder="••••••••" 
+                  required 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
               
