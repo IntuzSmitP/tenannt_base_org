@@ -179,9 +179,6 @@ export default function Users() {
       const res = await fetchApi(`/users/${userId}`, { method: "DELETE" }, slug);
       if (res.success) {
         setRefreshKey(prev => prev + 1);
-        if (profileData && profileData.email === email) {
-          handleViewProfile(email);
-        }
       }
     } catch {
       alert("Failed to remove user");
