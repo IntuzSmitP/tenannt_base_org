@@ -118,6 +118,9 @@ export default function Users() {
       if (res.success) {
         setMessage("Invitation resent successfully!");
         setRefreshKey(prev => prev + 1);
+        if (profileData && profileData.email === email) {
+          handleViewProfile(email);
+        }
       }
     } catch (err: unknown) {
       alert(`Failed to resend: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -176,6 +179,9 @@ export default function Users() {
       const res = await fetchApi(`/users/${userId}`, { method: "DELETE" }, slug);
       if (res.success) {
         setRefreshKey(prev => prev + 1);
+        if (profileData && profileData.email === email) {
+          handleViewProfile(email);
+        }
       }
     } catch {
       alert("Failed to remove user");
@@ -195,6 +201,9 @@ export default function Users() {
       
       if (res.success) {
         setRefreshKey(prev => prev + 1);
+        if (profileData && profileData.email === email) {
+          handleViewProfile(email);
+        }
       }
     } catch (err: unknown) {
       alert(`Failed to cancel: ${err instanceof Error ? err.message : 'Unknown error'}`);

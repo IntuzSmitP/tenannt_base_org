@@ -113,10 +113,10 @@ class UserService:
             "invited_by": current_user.id
         }
         
-        new_invitation = UserInvitation(**new_invitation_data)
-        db.add(new_invitation)
-        await db.commit()
-        await db.refresh(new_invitation)
+        # update the old invitation status
+        db.add(invitation)
+        # Use repo.create to handle tenant schema search_path correctly
+        new_invitation = await user_invitation_repo.create(db, obj_in=new_invitation_data)
         
         schema_name = db.info.get("schema_name", "")
         slug = schema_name.replace("tenant_", "") if schema_name.startswith("tenant_") else ""
@@ -138,16 +138,28 @@ class UserService:
         return True
 
     @staticmethod
-    async def accept_invitation(db: AsyncSession, token: str, password: str) -> bool:
+    async def validate_invitation(db: AsyncSession, token: str) -> bool:
         invitation = await user_invitation_repo.get_by_token(db, token=token)
         if not invitation:
-            raise AppException("Invalid invitation token.")
+            raise AppException("Invalid invitation token.", status_code=404)
             
         if invitation.expires_at < datetime.now(timezone.utc) or invitation.status == "expired":
-            raise AppException("This invitation link has been expired.")
+            raise AppException("This invitation link has expired.")
+            
+        if invitation.status == "canceled":
+            raise AppException("This invitation has been canceled by the administrator.")
             
         if invitation.status != "pending":
             raise AppException("Invitation already processed.")
+            
+        return True
+
+    @staticmethod
+    async def accept_invitation(db: AsyncSession, token: str, password: str) -> bool:
+        # First validate the token
+        await UserService.validate_invitation(db, token)
+        
+        invitation = await user_invitation_repo.get_by_token(db, token=token)
             
         # Check if user already exists (even if soft-deleted)
         existing_user = await user_repo.get_by_email_include_deleted(db, email=invitation.email)

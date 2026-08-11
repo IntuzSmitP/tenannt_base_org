@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { fetchApi } from "@/lib/api";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -13,11 +13,35 @@ function AcceptInviteForm() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [tokenError, setTokenError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [validating, setValidating] = useState(true);
   const [success, setSuccess] = useState(false);
 
   // We check for invalid params during render instead of in useEffect
   const isInvalidParams = !token || !slug;
+  
+  useEffect(() => {
+    if (isInvalidParams) {
+      setValidating(false);
+      return;
+    }
+    
+    const validateToken = async () => {
+      try {
+        const response = await fetchApi(`/users/invitations/validate?token=${token}`, {}, slug);
+        if (!response.success) {
+          setTokenError("Invalid or expired invitation link.");
+        }
+      } catch (err: any) {
+        setTokenError(err.message || "Failed to validate invitation.");
+      } finally {
+        setValidating(false);
+      }
+    };
+    
+    validateToken();
+  }, [token, slug, isInvalidParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,13 +95,17 @@ function AcceptInviteForm() {
           <h2 style={{ textAlign: 'center', marginBottom: '1rem' }}>Join Workspace</h2>
           <p style={{ textAlign: 'center', marginBottom: '2rem' }}>You&apos;ve been invited to join <strong>{slug}</strong>.</p>
           
-          {isInvalidParams ? (
+          {validating ? (
+            <div style={{ textAlign: 'center' }}>Validating invitation link...</div>
+          ) : isInvalidParams ? (
             <div className="alert alert-error">Invalid invitation link. Missing token or workspace slug.</div>
-          ) : error ? (
-            <div className="alert alert-error">{error}</div>
+          ) : tokenError ? (
+            <div className="alert alert-error">{tokenError}</div>
           ) : (
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
+            <>
+              {error && <div className="alert alert-error">{error}</div>}
+              <form onSubmit={handleSubmit}>
+                <div className="form-group">
                 <label>Set your Password</label>
                 <input 
                   type="password" 
@@ -103,6 +131,7 @@ function AcceptInviteForm() {
                 {loading ? "Joining..." : "Accept & Join"}
               </button>
             </form>
+            </>
           )}
         </div>
       </div>

@@ -119,6 +119,17 @@ async def get_member_profile(
     profile = await user_service.get_member_profile(db, email)
     return APIResponse(success=True, message="Profile retrieved", data=profile)
 
+@router.get("/invitations/validate", response_model=APIResponse[bool])
+async def validate_invitation(
+    token: str,
+    db: AsyncSession = Depends(get_tenant_db)
+):
+    """
+    Validate an invitation token before accepting.
+    """
+    result = await user_service.validate_invitation(db, token)
+    return APIResponse(success=True, message="Token is valid", data=result)
+
 @router.post("/accept-invite", response_model=APIResponse[bool])
 async def accept_invitation(
     req: AcceptInvitationRequest,
