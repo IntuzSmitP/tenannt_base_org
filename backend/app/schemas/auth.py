@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator, Field
 from uuid import UUID
 from app.core.security import validate_password_strength
 
@@ -15,7 +15,7 @@ class TokenPayload(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(..., max_length=72)
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
@@ -25,8 +25,8 @@ class ForgotPasswordRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     token: str
-    new_password: str
-    confirm_password: str
+    new_password: str = Field(..., min_length=8, max_length=72)
+    confirm_password: str = Field(..., max_length=72)
 
     @field_validator("new_password")
     @classmethod

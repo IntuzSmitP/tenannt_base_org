@@ -23,7 +23,10 @@ class CompanyRepository(BaseRepository[Company, CompanyCreate, CompanyCreate]):
 
 class UserDirectoryRepository(BaseRepository[UserDirectory, dict, dict]):
     async def get_by_email(self, db: AsyncSession, *, email: str) -> Optional[UserDirectory]:
-        stmt = select(UserDirectory).where(UserDirectory.email == email)
+        stmt = select(UserDirectory).where(
+            UserDirectory.email == email,
+            UserDirectory.deleted_at.is_(None)
+        )
         result = await db.execute(stmt)
         return result.scalars().first()
 

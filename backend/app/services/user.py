@@ -27,8 +27,8 @@ class UserService:
             <style>
                 body {{ font-family: 'Inter', sans-serif; background: #f3f4f6; color: #1f2937; margin: 0; padding: 0; }}
                 .container {{ max-width: 600px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }}
-                .header {{ background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%); padding: 40px 20px; text-align: center; color: #fff; }}
-                .content {{ padding: 40px 30px; line-height: 1.6; }}
+                .header {{ background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%); padding: 40px 20px; text-align: center; color: #fff; word-wrap: break-word; word-break: break-all; }}
+                .content {{ padding: 40px 30px; line-height: 1.6; word-wrap: break-word; word-break: break-word; }}
                 .button-container {{ text-align: center; margin: 40px 0; }}
                 .button {{ background: #4f46e5; color: #fff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block; }}
                 .footer {{ background: #f9fafb; padding: 24px; text-align: center; font-size: 13px; color: #6b7280; border-top: 1px solid #e5e7eb; }}
@@ -55,7 +55,13 @@ class UserService:
 
     @staticmethod
     async def invite_user(db: AsyncSession, current_user: User, invitation_in: UserInvitationCreate) -> UserInvitationResponse:
-        # Check if user already exists
+        # Check global user directory first
+        dir_entry = await user_directory_repo.get_by_email(db, email=invitation_in.email)
+        if dir_entry:
+            if str(dir_entry.company_id) != str(current_user.company_id):
+                raise AppException("This email is already registered with another organization.")
+            
+        # Check if user already exists in this tenant (active)
         existing_user = await user_repo.get_by_email(db, email=invitation_in.email)
         if existing_user:
             raise AppException("User already exists in this company.")
@@ -80,8 +86,9 @@ class UserService:
         
         invitation = await user_invitation_repo.create(db, obj_in=invitation_data)
         
-        schema_name = db.info.get("schema_name", "")
-        slug = schema_name.replace("tenant_", "") if schema_name.startswith("tenant_") else ""
+        from app.repositories.company import company_repo
+        company = await company_repo.get(db, id=current_user.company_id)
+        slug = company.slug if company else ""
         
         await UserService._send_invitation_email(invitation, current_user, token, slug, db)
         
@@ -89,19 +96,44 @@ class UserService:
 
     @staticmethod
     async def resend_invitation(db: AsyncSession, current_user: User, invitation_id: str) -> bool:
+        RESEND_COOLDOWN_MINUTES = 15
+
         invitation = await user_invitation_repo.get(db, id=invitation_id)
         if not invitation:
             raise AppException("Invitation not found.")
             
         if invitation.status == "accepted":
-            raise AppException("Cannot resend an accepted invitation.")
+            from app.repositories.user import user_repo
+            existing_user = await user_repo.get_by_email_include_deleted(db, email=invitation.email)
+            if not existing_user or not existing_user.deleted_at:
+                raise AppException("Cannot resend an accepted invitation unless the user is deactivated.")
+
+        # Check global user directory first
+        dir_entry = await user_directory_repo.get_by_email(db, email=invitation.email)
+        if dir_entry:
+            if str(dir_entry.company_id) != str(current_user.company_id):
+                raise AppException("This email is already registered with another organization.")
+
+        # Enforce cooldown: block resend if sent within the last 15 minutes
+        now = datetime.now(timezone.utc)
+        sent_at = invitation.created_at
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        elapsed = now - sent_at
+        cooldown = timedelta(minutes=RESEND_COOLDOWN_MINUTES)
+        if elapsed < cooldown:
+            remaining = int((cooldown - elapsed).total_seconds() // 60) + 1
+            raise AppException(
+                f"Please wait {remaining} minute before resending this invitation.",
+                status_code=429
+            )
             
         # Expire the old invitation
         invitation.status = "expired"
         
         # Create a new invitation record
         token = uuid.uuid4().hex
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
+        expires_at = now + timedelta(hours=24)
         
         new_invitation_data = {
             "company_id": invitation.company_id,
@@ -118,8 +150,9 @@ class UserService:
         # Use repo.create to handle tenant schema search_path correctly
         new_invitation = await user_invitation_repo.create(db, obj_in=new_invitation_data)
         
-        schema_name = db.info.get("schema_name", "")
-        slug = schema_name.replace("tenant_", "") if schema_name.startswith("tenant_") else ""
+        from app.repositories.company import company_repo
+        company = await company_repo.get(db, id=current_user.company_id)
+        slug = company.slug if company else ""
         
         await UserService._send_invitation_email(new_invitation, current_user, token, slug, db)
         return True
@@ -160,6 +193,11 @@ class UserService:
         await UserService.validate_invitation(db, token)
         
         invitation = await user_invitation_repo.get_by_token(db, token=token)
+            
+        # Check global user directory first
+        dir_entry = await user_directory_repo.get_by_email(db, email=invitation.email)
+        if dir_entry and str(dir_entry.company_id) != str(invitation.company_id):
+            raise AppException("This email is already registered with another organization.")
             
         # Check if user already exists (even if soft-deleted)
         existing_user = await user_repo.get_by_email_include_deleted(db, email=invitation.email)
@@ -330,10 +368,10 @@ class UserService:
         )
             
         await user_repo.remove(db, id=user_id, deleted_by=current_user.id)
-        # We also should deactivate them in user_directory
+        # We also should soft delete them from user_directory to free up the email globally
         dir_entry = await user_directory_repo.get_by_email(db, email=user.email)
         if dir_entry:
-            dir_entry.status = "inactive"
+            await user_directory_repo.remove(db, id=dir_entry.id, deleted_by=current_user.id)
             
         await db.commit()
             
@@ -364,37 +402,5 @@ class UserService:
             "assigned_tasks_count": assigned_tasks_count or 0,
             "project_memberships_count": project_memberships_count or 0
         }
-            
-        # Clean up associations
-        from sqlalchemy import update
-        from app.models.tenant import Task, ProjectMember
-        import uuid
-        
-        user_uuid = uuid.UUID(user_id) if isinstance(user_id, str) else user_id
-        
-        # Unassign tasks
-        await db.execute(
-            update(Task)
-            .where(Task.assigned_to == user_uuid)
-            .values(assigned_to=None)
-        )
-        
-        # Soft-delete project memberships
-        await db.execute(
-            update(ProjectMember)
-            .where(ProjectMember.user_id == user_uuid)
-            .where(ProjectMember.deleted_at.is_(None))
-            .values(deleted_at=datetime.now(timezone.utc))
-        )
-            
-        await user_repo.remove(db, id=user_id, deleted_by=current_user.id)
-        # We also should deactivate them in user_directory
-        dir_entry = await user_directory_repo.get_by_email(db, email=user.email)
-        if dir_entry:
-            dir_entry.status = "inactive"
-            
-        await db.commit()
-            
-        return True
 
 user_service = UserService()

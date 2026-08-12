@@ -7,4 +7,4 @@ class APIResponse(BaseModel, Generic[T]):
     success: bool
     message: str
     data: Optional[T] = None
-    errors: Optional[list] = None
+    total: Optional[int] = None

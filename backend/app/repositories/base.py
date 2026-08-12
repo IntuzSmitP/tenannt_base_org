@@ -37,6 +37,13 @@ class BaseRepository(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         result = await db.execute(stmt)
         return list(result.scalars().all())
 
+    async def count_all(self, db: AsyncSession) -> int:
+        stmt = select(func.count()).select_from(self.model)
+        if hasattr(self.model, "deleted_at"):
+            stmt = stmt.where(self.model.deleted_at.is_(None))
+        result = await db.execute(stmt)
+        return result.scalar() or 0
+
     async def create(self, db: AsyncSession, *, obj_in: CreateSchemaType | Dict[str, Any]) -> ModelType:
         from sqlalchemy import text
         obj_in_data = obj_in.model_dump() if isinstance(obj_in, BaseModel) else obj_in

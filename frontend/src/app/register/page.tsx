@@ -29,7 +29,13 @@ export default function Register() {
     try {
       const response = await fetchApi("/company/register", {
         method: "POST",
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          company_name: formData.company_name.trim(),
+          owner_name: formData.owner_name.trim(),
+          owner_email: formData.owner_email.trim(),
+          owner_password: formData.owner_password.trim(),
+          owner_confirm_password: formData.owner_confirm_password.trim(),
+        }),
       });
 
       if (response.success) {
@@ -58,6 +64,9 @@ export default function Register() {
                 type="text" 
                 placeholder="Acme Corp" 
                 required 
+                maxLength={50}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={formData.company_name}
                 onChange={(e) => setFormData({...formData, company_name: e.target.value})}
               />
@@ -69,6 +78,9 @@ export default function Register() {
                 type="text" 
                 placeholder="John Doe" 
                 required 
+                maxLength={50}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={formData.owner_name}
                 onChange={(e) => setFormData({...formData, owner_name: e.target.value})}
               />
@@ -80,6 +92,9 @@ export default function Register() {
                 type="email" 
                 placeholder="john@example.com" 
                 required 
+                maxLength={255}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={formData.owner_email}
                 onChange={(e) => setFormData({...formData, owner_email: e.target.value})}
               />
@@ -91,6 +106,9 @@ export default function Register() {
                 type="password" 
                 placeholder="••••••••" 
                 required 
+                maxLength={72}
+                pattern=".*\S+.*"
+                title="Password cannot be just whitespace"
                 value={formData.owner_password}
                 onChange={(e) => setFormData({...formData, owner_password: e.target.value})}
               />
@@ -102,6 +120,9 @@ export default function Register() {
                 type="password" 
                 placeholder="••••••••" 
                 required 
+                maxLength={72}
+                pattern=".*\S+.*"
+                title="Password cannot be just whitespace"
                 value={formData.owner_confirm_password}
                 onChange={(e) => setFormData({...formData, owner_confirm_password: e.target.value})}
               />

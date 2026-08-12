@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { fetchApi } from "@/lib/api";
 import { useParams } from "next/navigation";
 import { useUser } from "@/app/context/UserContext";
+import Pagination from "@/components/Pagination";
 
 interface User { id: string; name: string; email: string; role: string; [key: string]: unknown; }
 interface Invitation { id: string; email: string; name: string; role: string; status: string; expires_at: string; [key: string]: unknown; }
@@ -35,6 +36,15 @@ export default function Users() {
   const [inviteSearch, setInviteSearch] = useState("");
   const [inviteStatus, setInviteStatus] = useState("ALL");
 
+  // Pagination state
+  const PAGE_SIZE = 10;
+  const [activePage, setActivePage] = useState(1);
+  const [activeTotal, setActiveTotal] = useState(0);
+  const [deactivatedPage, setDeactivatedPage] = useState(1);
+  const [deactivatedTotal, setDeactivatedTotal] = useState(0);
+  const [invitePage, setInvitePage] = useState(1);
+  const [inviteTotal, setInviteTotal] = useState(0);
+
   // Profile Modal state
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -45,51 +55,91 @@ export default function Users() {
   const [inviteData, setInviteData] = useState({ email: "", name: "", role: "MEMBER" });
   const [formLoading, setFormLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
 
 
+  // Fetch active users from server whenever search/role/page changes
   useEffect(() => {
-    const fetchUsersAndInvites = async () => {
+    let active = true;
+    const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const [usersRes, deactivatedRes, invitesRes] = await Promise.all([
-          fetchApi(`/users/`, {}, slug),
-          fetchApi(`/users/deactivated`, {}, slug),
-          fetchApi(`/users/invitations`, {}, slug)
-        ]);
-        
-        if (usersRes.success) {
-          setUsers(usersRes.data);
-        }
-        if (deactivatedRes.success) {
-          setDeactivatedUsers(deactivatedRes.data);
-        }
-        if (invitesRes.success) {
-          setInvitations(invitesRes.data);
-        }
+        const p = new URLSearchParams();
+        if (activeSearch) p.set('q', activeSearch);
+        if (activeRole && activeRole !== 'ALL') p.set('role', activeRole);
+        p.set('page', String(activePage));
+        p.set('page_size', String(PAGE_SIZE));
+        const res = await fetchApi(`/users/?${p.toString()}`, {}, slug);
+        if (active && res.success) { setUsers(res.data); setActiveTotal(res.total ?? 0); }
       } catch (err) {
-        console.error("Failed to load members", err);
+        console.error('Failed to load active users', err);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    };
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [slug, activeSearch, activeRole, activePage, refreshKey]);
 
-    fetchUsersAndInvites();
-    fetchUsersAndInvites();
-  }, [slug, refreshKey]);
+  // Fetch deactivated users from server whenever search/role/page changes
+  useEffect(() => {
+    if (!isAdminOrOwner) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const p = new URLSearchParams();
+        if (deactivatedSearch) p.set('q', deactivatedSearch);
+        if (deactivatedRole && deactivatedRole !== 'ALL') p.set('role', deactivatedRole);
+        p.set('page', String(deactivatedPage));
+        p.set('page_size', String(PAGE_SIZE));
+        const res = await fetchApi(`/users/deactivated?${p.toString()}`, {}, slug);
+        if (active && res.success) { setDeactivatedUsers(res.data); setDeactivatedTotal(res.total ?? 0); }
+      } catch (err) {
+        console.error('Failed to load deactivated users', err);
+      }
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [slug, deactivatedSearch, deactivatedRole, deactivatedPage, refreshKey, isAdminOrOwner]);
+
+  // Fetch invitations from server whenever search/status/page changes
+  useEffect(() => {
+    if (!isAdminOrOwner) return;
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const p = new URLSearchParams();
+        if (inviteSearch) p.set('q', inviteSearch);
+        if (inviteStatus && inviteStatus !== 'ALL') p.set('status', inviteStatus);
+        p.set('page', String(invitePage));
+        p.set('page_size', String(PAGE_SIZE));
+        const res = await fetchApi(`/users/invitations?${p.toString()}`, {}, slug);
+        if (active && res.success) { setInvitations(res.data); setInviteTotal(res.total ?? 0); }
+      } catch (err) {
+        console.error('Failed to load invitations', err);
+      }
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [slug, inviteSearch, inviteStatus, invitePage, refreshKey, isAdminOrOwner]);
+
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     setMessage("");
+    setMessageType("success");
     try {
       const res = await fetchApi("/users/invite", {
         method: "POST",
-        body: JSON.stringify(inviteData),
+        body: JSON.stringify({
+          ...inviteData,
+          name: inviteData.name.trim(),
+          email: inviteData.email.trim()
+        }),
       }, slug);
       
       if (res.success) {
         setMessage(`Invitation sent to ${inviteData.email}!`);
+        setMessageType("success");
         setShowForm(false);
         setInviteData({ email: "", name: "", role: "MEMBER" });
         setInviteData({ email: "", name: "", role: "MEMBER" });
@@ -97,7 +147,8 @@ export default function Users() {
         setRefreshKey(prev => prev + 1);
       }
     } catch (err: unknown) {
-      setMessage(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setMessage(`${err instanceof Error ? err.message : 'Unknown error'}`);
+      setMessageType("error");
     } finally {
       setFormLoading(false);
     }
@@ -117,6 +168,7 @@ export default function Users() {
       
       if (res.success) {
         setMessage("Invitation resent successfully!");
+        setMessageType("success");
         setRefreshKey(prev => prev + 1);
         if (profileData && profileData.email === email) {
           handleViewProfile(email);
@@ -221,7 +273,7 @@ export default function Users() {
         )}
       </div>
       
-      {message && <div className={message.startsWith("Error") ? "alert alert-error" : "alert alert-success"}>{message}</div>}
+      {message && <div className={messageType === 'error' ? "alert alert-error" : "alert alert-success"}>{message}</div>}
 
 
       {showForm && (
@@ -232,6 +284,9 @@ export default function Users() {
               <input 
                 type="text" 
                 required 
+                maxLength={50}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={inviteData.name}
                 onChange={(e) => setInviteData({...inviteData, name: e.target.value})}
               />
@@ -241,6 +296,9 @@ export default function Users() {
               <input 
                 type="email" 
                 required 
+                maxLength={255}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={inviteData.email}
                 onChange={(e) => setInviteData({...inviteData, email: e.target.value})}
               />
@@ -313,17 +371,11 @@ export default function Users() {
         </div>
         {loading ? (
           <p>Loading members...</p>
-        ) : users.filter(u => 
-            (activeRole === 'ALL' || u.role === activeRole) &&
-            (u.name.toLowerCase().includes(activeSearch.toLowerCase()) || u.email.toLowerCase().includes(activeSearch.toLowerCase()))
-          ).length === 0 ? (
+        ) : users.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>No members found.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {users.filter(u => 
-              (activeRole === 'ALL' || u.role === activeRole) &&
-              (u.name.toLowerCase().includes(activeSearch.toLowerCase()) || u.email.toLowerCase().includes(activeSearch.toLowerCase()))
-            ).sort((a, b) => {
+            {[...users].sort((a, b) => {
               if (a.id === currentUser?.id) return -1;
               if (b.id === currentUser?.id) return 1;
               return 0;
@@ -371,10 +423,11 @@ export default function Users() {
             ))}
           </div>
         )}
+        <Pagination page={activePage} pageSize={PAGE_SIZE} total={activeTotal} onPageChange={setActivePage} />
       </div>
       )}
 
-      {activeTab === 'deactivated' && deactivatedUsers.length > 0 && isAdminOrOwner && (
+      {activeTab === 'deactivated' && isAdminOrOwner && (
         <div className="card animate-fade-in" style={{ marginTop: '0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)' }}>
@@ -404,10 +457,9 @@ export default function Users() {
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-            {deactivatedUsers.filter(u => 
-              (deactivatedRole === 'ALL' || u.role === deactivatedRole) &&
-              (u.name.toLowerCase().includes(deactivatedSearch.toLowerCase()) || u.email.toLowerCase().includes(deactivatedSearch.toLowerCase()))
-            ).map((user) => (
+            {deactivatedUsers.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>No deactivated members found.</p>
+            ) : deactivatedUsers.map((user) => (
               <div key={user.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-md)', opacity: 0.7 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>
@@ -432,7 +484,7 @@ export default function Users() {
                   </span>
                   <button 
                     onClick={() => handleViewProfile(user.email)}
-                    className="btn-secondary"
+                    className="btn btn-secondary"
                     style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
                   >
                     View Profile
@@ -441,6 +493,7 @@ export default function Users() {
               </div>
             ))}
           </div>
+          <Pagination page={deactivatedPage} pageSize={PAGE_SIZE} total={deactivatedTotal} onPageChange={setDeactivatedPage} />
         </div>
       )}
 
@@ -482,18 +535,11 @@ export default function Users() {
         
         {loading ? (
           <p>Loading invitations...</p>
-        ) : invitations.filter(i => 
-            (inviteStatus === 'ALL' || i.status === inviteStatus) &&
-            (i.name.toLowerCase().includes(inviteSearch.toLowerCase()) || i.email.toLowerCase().includes(inviteSearch.toLowerCase()))
-          ).length === 0 ? (
+        ) : invitations.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>No invitations match your filters.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {[...invitations]
-              .filter(i => 
-                (inviteStatus === 'ALL' || i.status === inviteStatus) &&
-                (i.name.toLowerCase().includes(inviteSearch.toLowerCase()) || i.email.toLowerCase().includes(inviteSearch.toLowerCase()))
-              )
               .sort((a, b) => {
                 if (sortBy === 'date_desc') return new Date(b.expires_at).getTime() - new Date(a.expires_at).getTime();
                 if (sortBy === 'date_asc') return new Date(a.expires_at).getTime() - new Date(b.expires_at).getTime();
@@ -530,6 +576,7 @@ export default function Users() {
               })}
           </div>
         )}
+        <Pagination page={invitePage} pageSize={PAGE_SIZE} total={inviteTotal} onPageChange={setInvitePage} />
       </div>
       )}
 
@@ -551,8 +598,8 @@ export default function Users() {
                   <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--primary-color), var(--accent-color))', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold', margin: '0 auto 1rem' }}>
                     {profileData.name.charAt(0).toUpperCase()}
                   </div>
-                  <h2 style={{ margin: '0 0 0.5rem 0' }}>{profileData.name}</h2>
-                  <div style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>{profileData.email}</div>
+                  <h2 style={{ margin: '0 0 0.5rem 0', wordBreak: 'break-word', overflowWrap: 'break-word' }}>{profileData.name}</h2>
+                  <div style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', wordBreak: 'break-all' }}>{profileData.email}</div>
                   <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem' }}>
                     <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', background: 'rgba(99, 102, 241, 0.1)', color: 'var(--primary-color)', borderRadius: '4px' }}>
                       {profileData.role}
@@ -566,7 +613,7 @@ export default function Users() {
                 
                 {(() => {
                   const latestEvent = profileData.timeline[0];
-                  const canResend = latestEvent && latestEvent.event_type === 'invited' && (latestEvent.status === 'pending' || latestEvent.status === 'expired' || latestEvent.status === 'canceled');
+                  const canResend = (latestEvent && latestEvent.event_type === 'invited' && (latestEvent.status === 'pending' || latestEvent.status === 'expired' || latestEvent.status === 'canceled')) || profileData.current_status === 'deactivated';
                   const canCancel = latestEvent && latestEvent.event_type === 'invited' && latestEvent.status === 'pending';
                   
                   if (!isAdminOrOwner || !canResend) return null;

@@ -43,8 +43,8 @@ export default function Settings() {
       const res = await fetchApi("/company/", {
         method: "DELETE",
         body: JSON.stringify({
-          email: deleteEmail,
-          password: deletePassword,
+          email: deleteEmail.trim(),
+          password: deletePassword.trim(),
         })
       }, slug);
 
@@ -100,6 +100,9 @@ export default function Settings() {
                   <input
                     type="email"
                     required
+                    maxLength={255}
+                    pattern=".*\S+.*"
+                    title="This field cannot contain only whitespace"
                     value={deleteEmail}
                     onChange={(e) => setDeleteEmail(e.target.value)}
                   />
@@ -109,6 +112,9 @@ export default function Settings() {
                   <input
                     type="password"
                     required
+                    maxLength={128}
+                    pattern=".*\S+.*"
+                    title="Password cannot be just whitespace"
                     value={deletePassword}
                     onChange={(e) => setDeletePassword(e.target.value)}
                   />

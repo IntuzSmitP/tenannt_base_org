@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID
@@ -13,11 +13,13 @@ router = APIRouter()
 
 @router.post("/", response_model=APIResponse[TaskResponse])
 async def create_task(
+    request: Request,
     task_in: TaskCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    task = await task_service.create_task(db, current_user, task_in)
+    tenant_slug = request.headers.get("X-Tenant-Slug")
+    task = await task_service.create_task(db, current_user, task_in, tenant_slug)
     return APIResponse(success=True, message="Task created", data=task)
 
 @router.get("/me", response_model=APIResponse[List[TaskResponse]])
@@ -43,19 +45,23 @@ async def get_tasks(
 
 @router.put("/{task_id}", response_model=APIResponse[TaskResponse])
 async def update_task(
+    request: Request,
     task_id: UUID,
     task_in: TaskUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    task = await task_service.update_task(db, current_user, task_id, task_in)
+    tenant_slug = request.headers.get("X-Tenant-Slug")
+    task = await task_service.update_task(db, current_user, task_id, task_in, tenant_slug)
     return APIResponse(success=True, message="Task updated", data=task)
 
 @router.delete("/{task_id}", response_model=APIResponse[bool])
 async def delete_task(
+    request: Request,
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    result = await task_service.delete_task(db, current_user, task_id)
+    tenant_slug = request.headers.get("X-Tenant-Slug")
+    result = await task_service.delete_task(db, current_user, task_id, tenant_slug)
     return APIResponse(success=True, message="Task deleted", data=result)

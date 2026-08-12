@@ -23,8 +23,8 @@ export default function Login() {
       const response = await fetchApi("/auth/login", {
         method: "POST",
         body: JSON.stringify({
-          email: formData.username, // using the username field for email
-          password: formData.password
+          email: formData.username.trim(), // using the username field for email
+          password: formData.password.trim()
         }),
       });
 
@@ -59,7 +59,10 @@ export default function Login() {
               <input 
                 type="email" 
                 placeholder="you@company.com" 
-                required 
+                required
+                maxLength={255}
+                pattern=".*\S+.*"
+                title="This field cannot contain only whitespace"
                 value={formData.username}
                 onChange={(e) => setFormData({...formData, username: e.target.value})}
               />
@@ -71,6 +74,9 @@ export default function Login() {
                 type="password" 
                 placeholder="••••••••" 
                 required 
+                maxLength={128}
+                pattern=".*\S+.*"
+                title="Password cannot be just whitespace"
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
               />

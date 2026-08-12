@@ -1,29 +1,38 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import List
+import json
+from typing import List, Optional
 from uuid import UUID
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.models.tenant import Project, User
 from app.repositories.project import project_repo
 from app.core.exceptions import AppException
+from app.core.websockets import manager
+from app.services.task import UUIDEncoder
 
 class ProjectService:
     @staticmethod
     async def create_project(db: AsyncSession, current_user: User, project_in: ProjectCreate) -> ProjectResponse:
+        existing_project = await project_repo.get_by_name(db, name=project_in.name)
+        if existing_project:
+            raise AppException("A project with this name already exists.", status_code=400)
+            
         data = project_in.model_dump()
         data["created_by"] = current_user.id
         project = await project_repo.create(db, obj_in=data)
         return ProjectResponse.model_validate(project)
         
     @staticmethod
-    async def get_projects(db: AsyncSession, current_user: User, skip: int = 0, limit: int = 100) -> List[ProjectResponse]:
+    async def get_projects(db: AsyncSession, current_user: User, skip: int = 0, limit: int = 10) -> tuple[List[ProjectResponse], int]:
         if current_user.role in ["OWNER", "ADMIN"]:
             projects = await project_repo.get_multi(db, skip=skip, limit=limit)
+            total = await project_repo.count_all(db)
         else:
             projects = await project_repo.get_multi_by_user(db, user_id=current_user.id, skip=skip, limit=limit)
-        return [ProjectResponse.model_validate(p) for p in projects]
+            total = await project_repo.count_by_user(db, user_id=current_user.id)
+        return [ProjectResponse.model_validate(p) for p in projects], total
         
     @staticmethod
-    async def update_project(db: AsyncSession, current_user: User, project_id: UUID, project_in: ProjectUpdate) -> ProjectResponse:
+    async def update_project(db: AsyncSession, current_user: User, project_id: UUID, project_in: ProjectUpdate, tenant_slug: Optional[str] = None) -> ProjectResponse:
         project = await project_repo.get(db, id=project_id)
         if not project:
             raise AppException("Project not found", status_code=404)
@@ -32,11 +41,22 @@ class ProjectService:
             # Requires further checking for project manager role in project_members
             raise AppException("Not enough permissions to update project.", status_code=403)
             
+        if project_in.name and project_in.name != project.name:
+            existing_project = await project_repo.get_by_name(db, name=project_in.name)
+            if existing_project:
+                raise AppException("A project with this name already exists.", status_code=400)
+            
         updated = await project_repo.update(db, db_obj=project, obj_in=project_in)
-        return ProjectResponse.model_validate(updated)
+        response = ProjectResponse.model_validate(updated)
+        
+        if tenant_slug:
+            payload = json.loads(json.dumps(response.model_dump(), cls=UUIDEncoder, default=str))
+            await manager.broadcast(tenant_slug, {"type": "PROJECT_UPDATED", "payload": payload})
+            
+        return response
         
     @staticmethod
-    async def delete_project(db: AsyncSession, current_user: User, project_id: UUID) -> bool:
+    async def delete_project(db: AsyncSession, current_user: User, project_id: UUID, tenant_slug: Optional[str] = None) -> bool:
         project = await project_repo.get(db, id=project_id)
         if not project:
             raise AppException("Project not found", status_code=404)
@@ -70,6 +90,9 @@ class ProjectService:
         
         # Commit the cascade changes
         await db.commit()
+        
+        if tenant_slug:
+            await manager.broadcast(tenant_slug, {"type": "PROJECT_DELETED", "payload": {"id": str(project_id)}})
         
         return True
 

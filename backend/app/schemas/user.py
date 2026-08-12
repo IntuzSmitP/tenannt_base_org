@@ -22,8 +22,9 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 class UserInvitationCreate(BaseModel):
+    model_config = {"str_strip_whitespace": True}
     email: EmailStr
-    name: str
+    name: str = Field(..., min_length=2, max_length=50, pattern=r'.*[a-zA-Z].*')
     role: RoleEnum = RoleEnum.MEMBER
 
 class UserInvitationResponse(BaseModel):
@@ -37,9 +38,10 @@ class UserInvitationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 class AcceptInvitationRequest(BaseModel):
+    model_config = {"str_strip_whitespace": True}
     token: str
-    password: str
-    confirm_password: str
+    password: str = Field(..., min_length=8, max_length=72)
+    confirm_password: str = Field(..., max_length=72)
 
     @field_validator("password")
     @classmethod

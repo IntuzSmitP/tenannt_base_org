@@ -58,7 +58,7 @@ function AcceptInviteForm() {
     try {
       const response = await fetchApi("/users/accept-invite", {
         method: "POST",
-        body: JSON.stringify({ token, password, confirm_password: confirmPassword }),
+        body: JSON.stringify({ token, password: password.trim(), confirm_password: confirmPassword.trim() }),
       }, slug);
 
       if (response.success) {
@@ -93,7 +93,7 @@ function AcceptInviteForm() {
       <div className="auth-container animate-fade-in">
         <div className="glass-card">
           <h2 style={{ textAlign: 'center', marginBottom: '1rem' }}>Join Workspace</h2>
-          <p style={{ textAlign: 'center', marginBottom: '2rem' }}>You&apos;ve been invited to join <strong>{slug}</strong>.</p>
+          <p style={{ textAlign: 'center', marginBottom: '2rem', wordBreak: 'break-all', overflowWrap: 'break-word' }}>You&apos;ve been invited to join <strong>{slug}</strong>.</p>
           
           {validating ? (
             <div style={{ textAlign: 'center' }}>Validating invitation link...</div>
@@ -111,6 +111,9 @@ function AcceptInviteForm() {
                   type="password" 
                   placeholder="••••••••" 
                   required 
+                  maxLength={128}
+                  pattern=".*\S+.*"
+                  title="Password cannot be just whitespace"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -122,6 +125,9 @@ function AcceptInviteForm() {
                   type="password" 
                   placeholder="••••••••" 
                   required 
+                  maxLength={128}
+                  pattern=".*\S+.*"
+                  title="Password cannot be just whitespace"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />

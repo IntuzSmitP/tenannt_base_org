@@ -11,13 +11,15 @@ class ProjectStatusEnum(str, Enum):
     archived = "archived"
 
 class ProjectCreate(BaseModel):
-    name: str = Field(..., min_length=1)
+    model_config = {"str_strip_whitespace": True}
+    name: str = Field(..., min_length=1, pattern=r'.*[a-zA-Z].*')
     description: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
 
 class ProjectUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1)
+    model_config = {"str_strip_whitespace": True}
+    name: Optional[str] = Field(None, min_length=1, pattern=r'.*[a-zA-Z].*')
     description: Optional[str] = None
     status: Optional[ProjectStatusEnum] = None
     start_date: Optional[date] = None

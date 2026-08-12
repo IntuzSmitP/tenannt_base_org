@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { fetchApi } from "@/lib/api";
 import { useParams, useRouter } from "next/navigation";
 import { useUser } from "@/app/context/UserContext";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 interface Project { id?: string; name: string; description: string; }
 interface Task { id: string; title: string; description: string; priority: string; assigned_to: string; status: string; project_id: string; }
@@ -13,13 +14,90 @@ export default function ProjectDetails() {
   const params = useParams();
   const slug = params.slug as string;
   const projectId = params.id as string;
-  const { isAdminOrOwner } = useUser();
+  const { user, isAdminOrOwner } = useUser();
   const router = useRouter();
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [toast, setToast] = useState<string | null>(null);
+
+  // WebSocket Integration
+  const { isConnected, addListener } = useWebSocket(slug);
+
+  useEffect(() => {
+    const showToast = (message: string) => {
+      setToast(message);
+      setTimeout(() => setToast(null), 3000);
+    };
+
+    const currentUserId = user?.id as string | undefined;
+
+    const removeListener = addListener((event) => {
+      if (event.type === "TASK_CREATED") {
+        if (event.payload.project_id === projectId) {
+          // Members only see tasks assigned to them
+          if (!isAdminOrOwner && currentUserId && event.payload.assigned_to !== currentUserId) return;
+          setTasks((prev) => {
+            if (prev.some(t => t.id === event.payload.id)) return prev;
+            showToast(`New task created: "${event.payload.title}"`);
+            return [...prev, event.payload];
+          });
+        }
+      } else if (event.type === "TASK_UPDATED") {
+        if (event.payload.project_id === projectId) {
+          setTasks((prev) => {
+            const exists = prev.find(t => t.id === event.payload.id);
+
+            // For members: if the task was reassigned away from them, remove it
+            if (!isAdminOrOwner && currentUserId && event.payload.assigned_to !== currentUserId) {
+              if (exists) {
+                showToast(`Task "${event.payload.title}" was reassigned.`);
+                return prev.filter(t => t.id !== event.payload.id);
+              }
+              return prev;
+            }
+
+            // For members: if the task was reassigned TO them, add it
+            if (!isAdminOrOwner && currentUserId && event.payload.assigned_to === currentUserId && !exists) {
+              showToast(`Task "${event.payload.title}" was assigned to you.`);
+              return [...prev, event.payload];
+            }
+
+            // Otherwise update in place
+            if (exists && JSON.stringify(exists) !== JSON.stringify(event.payload)) {
+              showToast(`Task updated: "${event.payload.title}"`);
+            }
+            return prev.map(t => t.id === event.payload.id ? event.payload : t);
+          });
+        }
+      } else if (event.type === "TASK_DELETED") {
+        if (event.payload.project_id === projectId) {
+          showToast(`A task was deleted.`);
+          setTasks((prev) => prev.filter(t => t.id !== event.payload.id));
+        }
+      } else if (event.type === "PROJECT_UPDATED") {
+        if (event.payload.id === projectId) {
+          showToast(`Project details updated.`);
+          setProject((prev) => prev ? { ...prev, ...event.payload } : event.payload);
+        }
+      } else if (event.type === "PROJECT_DELETED") {
+        if (event.payload.id === projectId) {
+          showToast(`This project was deleted. Redirecting...`);
+          setTimeout(() => {
+            router.push(`/${slug}/dashboard`);
+          }, 2000);
+        }
+      }
+    });
+
+    return () => {
+      removeListener();
+    };
+  }, [addListener, projectId, user, isAdminOrOwner]);
 
   // Edit Project State
   const [isEditingProject, setIsEditingProject] = useState(false);
@@ -86,6 +164,8 @@ export default function ProjectDetails() {
         method: "POST",
         body: JSON.stringify({
           ...newTask,
+          title: newTask.title.trim(),
+          description: newTask.description?.trim() || "",
           project_id: projectId,
           assigned_to: newTask.assigned_to || null
         }),
@@ -137,8 +217,8 @@ export default function ProjectDetails() {
       const res = await fetchApi(`/tasks/${editingTask.id}`, {
         method: "PUT",
         body: JSON.stringify({
-          title: editTaskData.title,
-          description: editTaskData.description || null,
+          title: editTaskData.title.trim(),
+          description: editTaskData.description?.trim() || null,
           priority: editTaskData.priority,
           assigned_to: editTaskData.assigned_to || null,
         }),
@@ -158,14 +238,18 @@ export default function ProjectDetails() {
     try {
       const res = await fetchApi(`/projects/${projectId}`, {
         method: "PUT",
-        body: JSON.stringify(editProjectData),
+        body: JSON.stringify({
+          ...editProjectData,
+          name: editProjectData.name.trim(),
+          description: editProjectData.description?.trim() || ""
+        }),
       }, slug);
       if (res.success) {
         setProject(res.data);
         setIsEditingProject(false);
       }
-    } catch {
-      alert("Failed to update project");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update project");
     } finally {
       setEditProjectLoading(false);
     }
@@ -220,16 +304,59 @@ export default function ProjectDetails() {
   ];
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-        <button className="btn btn-secondary" onClick={() => router.push(`/${slug}/dashboard`)}>
+    <div style={{ overflowX: 'hidden' }}>
+      {/* Full Project Info Modal */}
+      {showFullDescription && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ padding: '2.5rem', width: '600px', maxWidth: '90%', maxHeight: '80vh', overflowY: 'auto', position: 'relative' }}>
+            <button 
+              onClick={() => setShowFullDescription(false)}
+              style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'var(--bg-elevated)', border: 'none', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem', color: 'var(--text-muted)' }}
+            >
+              ✕
+            </button>
+            <h2 style={{ margin: '0 0 1.5rem 0', color: 'var(--text-primary)', wordBreak: 'break-all', overflowWrap: 'anywhere', lineHeight: 1.3, paddingRight: '2rem' }}>
+              {project.name}
+            </h2>
+            {project.description && (
+              <>
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+                  <h4 style={{ margin: '0 0 0.75rem 0', color: 'var(--text-muted)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Description</h4>
+                  <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6, wordBreak: 'break-all', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                    {project.description}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', marginBottom: '2rem' }}>
+        <button className="btn btn-secondary" onClick={() => router.push(`/${slug}/dashboard`)} style={{ flexShrink: 0 }}>
           &larr; Back
         </button>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {project.name}
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+            <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+              <h2 style={{ 
+                margin: 0,
+                display: '-webkit-box',
+                WebkitLineClamp: 1,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                wordBreak: 'break-all',
+                overflowWrap: 'anywhere',
+                lineHeight: 1.3
+              }}>
+                {project.name}
+                {isConnected && (
+                  <span title="Live Updates Connected" style={{ display: 'inline-block', width: '10px', height: '10px', backgroundColor: '#4ade80', borderRadius: '50%', marginLeft: '12px', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6)' }} />
+                )}
+              </h2>
+            </div>
             {isAdminOrOwner && (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, paddingTop: '0.25rem' }}>
                 <button 
                   onClick={() => setIsEditingProject(!isEditingProject)}
                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.9rem' }}
@@ -244,11 +371,32 @@ export default function ProjectDetails() {
                 </button>
               </div>
             )}
-          </h2>
-          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{project.description}</p>
+          </div>
+          {project.description && (
+            <p style={{ 
+              margin: '0.25rem 0 0 0', 
+              color: 'var(--text-secondary)', 
+              fontSize: '0.9rem',
+              lineHeight: 1.5,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              wordBreak: 'break-all',
+              overflowWrap: 'anywhere'
+            }}>{project.description}</p>
+          )}
+          {(project.name.length > 40 || (project.description && project.description.length > 100)) && (
+            <button
+              onClick={() => setShowFullDescription(true)}
+              style={{ background: 'none', border: 'none', color: 'var(--primary-color)', fontSize: '0.8rem', cursor: 'pointer', padding: '0.35rem 0 0 0', fontWeight: 600 }}
+            >
+              Read more
+            </button>
+          )}
         </div>
         {isAdminOrOwner && (
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)} style={{ flexShrink: 0 }}>
             {showForm ? "Cancel" : "+ New Task"}
           </button>
         )}
@@ -264,6 +412,8 @@ export default function ProjectDetails() {
                   type="text"
                   required
                   maxLength={100}
+                  pattern=".*\S+.*"
+                  title="This field cannot contain only whitespace"
                   className="input"
                   value={editProjectData.name}
                   onChange={(e) => setEditProjectData({...editProjectData, name: e.target.value})}
@@ -298,6 +448,8 @@ export default function ProjectDetails() {
                   type="text" 
                   required 
                   maxLength={100}
+                  pattern=".*\S+.*"
+                  title="This field cannot contain only whitespace"
                   className="input"
                   value={newTask.title}
                   onChange={(e) => setNewTask({...newTask, title: e.target.value})}
@@ -310,7 +462,7 @@ export default function ProjectDetails() {
                   onChange={(e) => setNewTask({...newTask, assigned_to: e.target.value})}
                 >
                   <option value="">-- Unassigned --</option>
-                  {users.filter(u => !u.is_deactivated).map(u => (
+                  {users.map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>
@@ -397,6 +549,8 @@ export default function ProjectDetails() {
                   type="text"
                   required
                   maxLength={100}
+                  pattern=".*\S+.*"
+                  title="This field cannot contain only whitespace"
                   className="input"
                   value={editTaskData.title}
                   onChange={(e) => setEditTaskData({...editTaskData, title: e.target.value})}
@@ -420,7 +574,7 @@ export default function ProjectDetails() {
                     onChange={(e) => setEditTaskData({...editTaskData, assigned_to: e.target.value})}
                   >
                     <option value="">Unassigned</option>
-                    {users.filter(u => !u.is_deactivated).map(u => (
+                    {users.map(u => (
                       <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                     ))}
                   </select>
@@ -440,10 +594,10 @@ export default function ProjectDetails() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <button type="button" className="btn-secondary" onClick={() => setEditingTask(null)}>
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingTask(null)}>
                   Cancel
                 </button>
-                <button type="submit" className="btn-primary">
+                <button type="submit" className="btn btn-primary">
                   Save Changes
                 </button>
               </div>
@@ -515,7 +669,7 @@ export default function ProjectDetails() {
                     )}
                   </div>
                   
-                  <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                  <h5 style={{ margin: '0 0 0.5rem 0', fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word' }}>
                     {task.title}
                   </h5>
                   
@@ -575,6 +729,14 @@ export default function ProjectDetails() {
           </div>
         ))}
       </div>
+      
+      {/* Live Toast Notification */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '1rem 1.5rem', boxShadow: '0 8px 30px rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', gap: '0.75rem', zIndex: 9999, animation: 'fadeInUp 0.3s ease-out forwards' }}>
+          <div style={{ width: '8px', height: '8px', backgroundColor: '#4ade80', borderRadius: '50%', boxShadow: '0 0 8px rgba(74, 222, 128, 0.6)' }} />
+          <span style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 500 }}>{toast}</span>
+        </div>
+      )}
     </div>
   );
 }

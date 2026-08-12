@@ -16,13 +16,18 @@ router = APIRouter()
 @router.get("/", response_model=APIResponse[list[dict]])
 async def get_users(
     q: Optional[str] = None,
+    role: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
     """
-    List all users in the tenant, optionally filtered by name/email.
+    List all active users in the tenant, optionally filtered by name/email and role.
     """
-    users = await user_repo.search(db, q=q)
+    skip = (page - 1) * page_size
+    users = await user_repo.search(db, q=q, role=role, skip=skip, limit=page_size)
+    total = await user_repo.count_search(db, q=q, role=role)
     user_list = [
         {
             "id": str(u.id),
@@ -33,18 +38,23 @@ async def get_users(
         }
         for u in users
     ]
-    return APIResponse(success=True, message="Users retrieved", data=user_list)
+    return APIResponse(success=True, message="Users retrieved", data=user_list, total=total)
 
 @router.get("/deactivated", response_model=APIResponse[list[dict]])
 async def get_deactivated_users(
     q: Optional[str] = None,
+    role: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
     """
-    List all deactivated users in the tenant.
+    List all deactivated users in the tenant, optionally filtered by name/email and role.
     """
-    users = await user_repo.get_deactivated(db, q=q)
+    skip = (page - 1) * page_size
+    users = await user_repo.get_deactivated(db, q=q, role=role, skip=skip, limit=page_size)
+    total = await user_repo.count_deactivated(db, q=q, role=role)
     user_list = [
         {
             "id": str(u.id),
@@ -55,21 +65,25 @@ async def get_deactivated_users(
         }
         for u in users
     ]
-    return APIResponse(success=True, message="Deactivated users retrieved", data=user_list)
+    return APIResponse(success=True, message="Deactivated users retrieved", data=user_list, total=total)
 
 from app.repositories.user import user_invitation_repo
 
 @router.get("/invitations", response_model=APIResponse[list[UserInvitationResponse]])
 async def get_invitations(
     q: Optional[str] = None,
+    status: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 10,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
     """
-    List all invitations in the tenant, optionally filtered by name/email.
+    List all invitations in the tenant, optionally filtered by name/email and status.
     """
-    invitations = await user_invitation_repo.search_latest_invitations(db, q=q)
-    return APIResponse(success=True, message="Invitations retrieved", data=invitations)
+    invitations = await user_invitation_repo.search_latest_invitations(db, q=q, status=status, page=page, page_size=page_size)
+    total = await user_invitation_repo.count_invitations(db, q=q, status=status)
+    return APIResponse(success=True, message="Invitations retrieved", data=invitations, total=total)
 
 @router.post("/invite", response_model=APIResponse[UserInvitationResponse])
 async def invite_user(

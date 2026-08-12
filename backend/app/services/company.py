@@ -158,15 +158,27 @@ class CompanyService:
             .where(Company.id == company_id)
         )
         
-        # 4. Permanently drop the tenant schema and all its data
-        try:
-            await public_db.execute(text(f"DROP SCHEMA IF EXISTS {company.schema_name} CASCADE"))
-        except Exception as e:
-            # If it fails, log it but don't crash
-            import logging
-            logging.error(f"Failed to drop schema {company.schema_name}: {e}")
-        
         await public_db.commit()
+
+        # 4. Permanently drop the tenant schema and all its data in the background
+        # We must do this asynchronously because the current HTTP request still holds 
+        # a database lock on the tenant schema (via get_current_user), which causes 
+        # a deadlock if we try to DROP SCHEMA CASCADE in the same request loop.
+        import asyncio
+        async def drop_schema_task(schema_to_drop: str):
+            await asyncio.sleep(2) # Give the HTTP request time to close its DB connections
+            from app.db.session import AsyncSessionLocal
+            from sqlalchemy import text
+            import logging
+            try:
+                async with AsyncSessionLocal() as session:
+                    await session.execute(text(f"DROP SCHEMA IF EXISTS {schema_to_drop} CASCADE"))
+                    await session.commit()
+            except Exception as e:
+                logging.error(f"Failed to drop schema {schema_to_drop}: {e}")
+
+        asyncio.create_task(drop_schema_task(company.schema_name))
+        
         return True
 
 company_service = CompanyService()

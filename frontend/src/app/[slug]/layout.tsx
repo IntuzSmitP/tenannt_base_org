@@ -73,14 +73,11 @@ export default function DashboardLayout({
               <h3 
                 style={{ 
                   color: 'var(--text-primary)', 
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                  overflow: 'hidden',
                   margin: 0,
                   fontSize: '0.95rem',
                   lineHeight: '1.2',
-                  fontWeight: 600
+                  fontWeight: 600,
+                  wordBreak: 'break-all'
                 }} 
                 title={companyName}
               >

@@ -5,11 +5,12 @@ from typing import Optional
 from app.core.security import validate_password_strength
 
 class CompanyCreate(BaseModel):
-    company_name: str = Field(..., min_length=2, max_length=100)
-    owner_name: str = Field(..., min_length=2, max_length=100)
+    model_config = {"str_strip_whitespace": True}
+    company_name: str = Field(..., min_length=2, max_length=50, pattern=r'.*[a-zA-Z].*')
+    owner_name: str = Field(..., min_length=2, max_length=50, pattern=r'.*[a-zA-Z].*')
     owner_email: EmailStr
-    owner_password: str = Field(..., min_length=8)
-    owner_confirm_password: str
+    owner_password: str = Field(..., min_length=8, max_length=72)
+    owner_confirm_password: str = Field(..., max_length=72)
 
     @field_validator("owner_password")
     @classmethod

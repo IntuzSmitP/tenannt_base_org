@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from uuid import UUID
@@ -22,13 +22,14 @@ async def create_project(
 
 @router.get("/", response_model=APIResponse[List[ProjectResponse]])
 async def get_projects(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 9,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    projects = await project_service.get_projects(db, current_user, skip, limit)
-    return APIResponse(success=True, message="Projects retrieved", data=projects)
+    skip = (page - 1) * page_size
+    projects, total = await project_service.get_projects(db, current_user, skip, page_size)
+    return APIResponse(success=True, message="Projects retrieved", data=projects, total=total)
 
 @router.get("/{project_id}", response_model=APIResponse[ProjectResponse])
 async def get_project(
@@ -46,21 +47,25 @@ async def get_project(
 
 @router.put("/{project_id}", response_model=APIResponse[ProjectResponse])
 async def update_project(
+    request: Request,
     project_id: UUID,
     project_in: ProjectUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    project = await project_service.update_project(db, current_user, project_id, project_in)
+    tenant_slug = request.headers.get("X-Tenant-Slug")
+    project = await project_service.update_project(db, current_user, project_id, project_in, tenant_slug)
     return APIResponse(success=True, message="Project updated", data=project)
 
 @router.delete("/{project_id}", response_model=APIResponse[bool])
 async def delete_project(
+    request: Request,
     project_id: UUID,
     current_user: User = Depends(require_role(["ADMIN"])),
     db: AsyncSession = Depends(get_tenant_db)
 ):
-    result = await project_service.delete_project(db, current_user, project_id)
+    tenant_slug = request.headers.get("X-Tenant-Slug")
+    result = await project_service.delete_project(db, current_user, project_id, tenant_slug)
     return APIResponse(success=True, message="Project deleted", data=result)
 
 @router.get("/{project_id}/impact", response_model=APIResponse[dict])

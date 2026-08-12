@@ -6,14 +6,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AppException(Exception):
-    def __init__(self, message: str, status_code: int = 400, data: dict = None, errors: list = None):
+    def __init__(self, message: str, status_code: int = 400, data: dict = None):
         self.message = message
         self.status_code = status_code
         self.data = data
-        self.errors = errors if errors is not None else []
         super().__init__(self.message)
 
-def create_error_response(message: str, status_code: int, data: dict = None, errors: list = None):
+def create_error_response(message: str, status_code: int, data: dict = None):
     # Always include all parameters so the frontend has a consistent, predictable contract
     return JSONResponse(
         status_code=status_code, 
@@ -21,7 +20,6 @@ def create_error_response(message: str, status_code: int, data: dict = None, err
             "success": False,
             "message": message,
             "data": data,
-            "errors": errors if errors is not None else []
         }
     )
 
@@ -29,25 +27,34 @@ async def app_exception_handler(request: Request, exc: AppException):
     return create_error_response(
         message=exc.message,
         status_code=exc.status_code,
-        data=exc.data,
-        errors=exc.errors
+        data=exc.data
     )
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     # Parse Pydantic validation errors into structured objects for the frontend
     formatted_errors = []
-    for err in exc.errors():
+    first_error_msg = "Validation failed. Please check your inputs."
+    
+    for i, err in enumerate(exc.errors()):
         field = str(err.get("loc", ["unknown"])[-1])
         msg = err.get("msg", "").replace("Value error, ", "")
+        
+        # Make the generic regex error more user friendly
+        if "String should match pattern" in msg:
+            msg = f"{field.replace('_', ' ').title()} must contain at least one alphabet letter."
+            
         formatted_errors.append({
             "field": field,
             "message": msg
         })
         
+        if i == 0:
+            first_error_msg = msg
+            
     return create_error_response(
-        message="Invalid input data. Please check your fields and try again.",
+        message=first_error_msg,
         status_code=422,
-        errors=formatted_errors
+        data={"validation_errors": formatted_errors}
     )
 
 async def global_exception_handler(request: Request, exc: Exception):
